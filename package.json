@@ -3,12 +3,9 @@
   "version": "3.8.4",
   "description": "AI/ML Multi-source Satellite Tropical Cyclone Intelligence Platform (SIH 2026 PS 26070)",
   "scripts": {
-    "dev": "python -m http.server 8080",
-    "dev:frontend": "cd frontend && npm run dev",
-    "dev:backend": "python -m uvicorn backend.main:app --reload --port 8000",
+    "dev": "cd frontend && npm run dev",
     "build": "cd frontend && npm run build",
-    "lint": "cd frontend && npx tsc --noEmit && node -c js/data.js js/api.js js/app.js",
-    "start": "python -m uvicorn backend.main:app --port 8000"
+    "install:all": "cd frontend && npm install"
   },
   "keywords": [
     "cyclone-watch",
