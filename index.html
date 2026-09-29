@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VYUHA CYCLONE INTELLIGENCE | Operational Cyclone Prediction Workstation (PS 26070)</title>
+  
+  <!-- Meteorological & Operational Meta -->
+  <meta name="description" content="AI/ML Tropical Cyclone Identification, Pattern Classification and Recurrent ConvLSTM Trajectory Forecast Workstation.">
+  <meta name="keywords" content="Tropical Cyclone, INSAT-3DS, ConvLSTM, YOLOv8, SIH 2026 PS 26070, Bay of Bengal">
+
+  <!-- External Leaflet Cartographic CDN -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <!-- High-Density Operational Stylesheet -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- STALE DATA NOTICE BAR (REALISTIC IMPERFECTION) -->
+  <div class="stale-notice-bar" id="staleNoticeBar">
+    <div>
+      <b>WARNING [DATA_LATENCY]:</b> INSAT-3DR Sounder packet delayed (+47m). Fallback ECMWF 0.125° grid active for vertical moisture profile.
+    </div>
+    <button class="stale-dismiss-btn" id="btnDismissStale">DISMISS NOTICE</button>
+  </div>
+
+  <!-- OPERATIONAL HEADER MASTHEAD -->
+  <header class="header-masthead">
+    <div class="brand-section">
+      <div class="brand-title">VYUHA CYCLONE INTELLIGENCE</div>
+      <div class="brand-bulletin">
+        <span>BULLETIN NO. BOB/04/2026/14</span>
+        <span style="margin:0 6px;">•</span>
+        <span>ISSUE: 2026-09-29 18:00 UTC</span>
+        <span style="margin:0 6px;">•</span>
+        <span style="color:var(--accent); font-weight:600;">VSCS "VYUHA" (BOB/04)</span>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <div class="system-status-indicator">
+        <span class="status-dot-solid"></span>
+        <span>NODE: A100-SXM4 (38.4ms)</span>
+      </div>
+      <button class="audio-toggle" id="audioToggleBtn" title="Toggle Terminal Audio">AUDIO: ON</button>
+    </div>
+  </header>
+
+  <!-- NAVIGATION TABS (RULED METEOROLOGICAL TAB BAR) -->
+  <nav class="nav-toolbar">
+    <div class="nav-tabs-list">
+      <button class="nav-tab-item active" data-tab="dashboard">01. WORKSTATION</button>
+      <button class="nav-tab-item" data-tab="vision-studio">02. SATELLITE STUDIO</button>
+      <button class="nav-tab-item" data-tab="convlstm">03. CONVLSTM ENCODER</button>
+      <button class="nav-tab-item" data-tab="fusion">04. SENSOR FUSION</button>
+      <button class="nav-tab-item" data-tab="risk">05. RISK & DISPATCH</button>
+      <button class="nav-tab-item" data-tab="raw-json">06. GEOJSON / API</button>
+    </div>
+    <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-secondary);">
+      SIH 2026 • PS 26070
+    </div>
+  </nav>
+
+  <!-- TOP PIPELINE FLOW (6 DENSE CONNECTED NODES) -->
+  <section class="pipeline-strip">
+    <div class="section-label-mono">END-TO-END INFERENCE FLOW (MULTI-SOURCE INGESTION ➔ 72H TRAJECTORY)</div>
+    <div class="pipeline-grid" id="pipelineGrid">
+      <!-- Generated dynamically by js/app.js -->
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       MAIN WORKSTATION BODY
+       ========================================================================== -->
+  <main class="workstation-container">
+
+    <!-- TAB 1: OPERATIONAL WORKSTATION (DOMINANT MAP) -->
+    <div class="workstation-view active-view" id="view-dashboard">
+      <div class="workstation-layout">
+
+        <!-- ================= LEFT COLUMN: MODEL STACK & FEEDS ================= -->
+        <aside class="left-workstation-col">
+
+          <!-- Current Intensity Summary Box -->
+          <div class="ruled-box">
+            <div class="ruled-box-header">
+              <span class="ruled-box-title">CYCLONE TELEMETRY</span>
+              <span class="mono" style="font-size:10px; color:var(--accent);">LIVE T0</span>
+            </div>
+            <div class="telemetry-grid-box">
+              <div class="telemetry-cell">
+                <div class="telemetry-cell-label">MAX SUSTAINED WIND</div>
+                <div class="telemetry-cell-value">
+                  <span id="statVmaxKnots">92</span> <span class="unit">kt (<span id="statVmaxKmph">170</span> km/h)</span>
+                </div>
+              </div>
+              <div class="telemetry-cell">
+                <div class="telemetry-cell-label">CENTRAL MSLP</div>
+                <div class="telemetry-cell-value">
+                  <span id="statMslpHpa">948</span> <span class="unit">hPa</span>
+                </div>
+              </div>
+            </div>
+            <div style="padding:6px 10px; font-family:var(--font-mono); font-size:10px; border-bottom:1px solid var(--border-hairline);">
+              STAGE: <b id="statStageName" style="color:var(--text-primary);">VERY SEVERE CYCLONIC STORM (VSCS)</b><br/>
+              ESTIMATED 24H: <b>98 kt (181 km/h)</b> • DVORAK: <b>T5.0 / CI 5.0</b>
+            </div>
+          </div>
+
+          <!-- Active AI Model Registry -->
+          <div class="ruled-box">
+            <div class="ruled-box-header">
+              <span class="ruled-box-title">ACTIVE MODEL STACK</span>
+              <span class="mono" style="font-size:10px;">5 ONLINE</span>
+            </div>
+            <table class="dense-table">
+              <thead>
+                <tr>
+                  <th>MODEL</th>
+                  <th>TASK</th>
+                  <th style="text-align:right;">ACC / LAT</th>
+                </tr>
+              </thead>
+              <tbody id="modelTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Sensor Ingestion Feed Matrix -->
+          <div class="ruled-box">
+            <div class="ruled-box-header">
+              <span class="ruled-box-title">MULTI-SOURCE INGESTION</span>
+              <span class="mono" style="font-size:10px;">7 FEEDS</span>
+            </div>
+            <table class="dense-table">
+              <thead>
+                <tr>
+                  <th>SOURCE</th>
+                  <th>TYPE</th>
+                  <th style="text-align:right;">LATENCY</th>
+                </tr>
+              </thead>
+              <tbody id="feedsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+        </aside>
+
+        <!-- ================= CENTER COLUMN: SATELLITE & MAP ================= -->
+        <section class="center-workstation-col">
+
+          <!-- Top Satellite Vision Viewer -->
+          <div class="satellite-viewer-section">
+            <div class="satellite-viewer-toolbar">
+              <div class="viewer-label">
+                <span>INSAT-3DS • IR1 (10.8µm) • 1km GSD</span>
+              </div>
+
+              <!-- Layer Selector -->
+              <div class="btn-group-tight">
+                <button class="btn-tight layer-select-btn" data-layer="raw">RAW</button>
+                <button class="btn-tight layer-select-btn active" data-layer="heatmap">GRAD-CAM</button>
+                <button class="btn-tight layer-select-btn" data-layer="seg">SEGMENTATION</button>
+                <button class="btn-tight layer-select-btn" data-layer="edge">SOBEL EDGE</button>
+              </div>
+
+              <!-- Band Switcher & Action -->
+              <div style="display:flex; gap:6px;">
+                <div class="btn-group-tight">
+                  <button class="btn-tight band-select-btn active" data-band="ir">IR1</button>
+                  <button class="btn-tight band-select-btn" data-band="vis">VIS</button>
+                </div>
+                <button class="btn-action-accent" id="btnTriggerScan">RUN INFERENCE SCAN</button>
+              </div>
+            </div>
+
+            <!-- Canvas Viewport -->
+            <div class="satellite-canvas-wrap">
+              <img src="assets/cyclone_ir.jpg" alt="INSAT-3DS Satellite Imagery" class="satellite-img-source" id="satelliteDisplayImg" />
+              <canvas class="satellite-canvas-hud" id="satelliteAiCanvas"></canvas>
+              <div class="laser-scanner-line" id="laserScanline"></div>
+
+              <!-- HUD Top-Left -->
+              <div class="canvas-overlay-tag">
+                <div>YOLOv8 DETECTED: <b id="hudDetectionConf" style="color:#D9541E;">94.2%</b></div>
+                <div style="margin-top:2px;">CENTER: <span id="hudCenterCoords" class="mono">15.80°N, 87.20°E</span></div>
+              </div>
+
+              <!-- HUD Top-Right -->
+              <div class="canvas-overlay-tag-tr">
+                <div>CNN PATTERN: <b>CDO + CURVED BAND</b></div>
+                <div>TBB MIN: <b>188.4K (-84.8°C)</b></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cartographic Map Frame -->
+          <div class="map-frame-box">
+            <div id="leafletMapContainer"></div>
+
+            <div class="map-metadata-strip">
+              <div><b>TRACK LEGEND:</b> <span style="color:var(--accent);">■</span> ConvLSTM 72h Forecast • <span style="color:#878E99;">---</span> Best Track Reference • <span style="color:#1A1D21;">▲</span> Coastal Stations</div>
+              <div><b>UNCERTAINTY ENVELOPE:</b> Monte Carlo Epistemic Cone (±42 km at 24h, ±78 km at 48h)</div>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ================= RIGHT COLUMN: FORECAST, PATTERNS & XAI ================= -->
+        <aside class="right-workstation-col">
+
+          <!-- 72H Forecast Table -->
+          <div class="ruled-box">
+            <div class="ruled-box-header">
+              <span class="ruled-box-title">72H ConvLSTM TRAJECTORY</span>
+              <span class="mono" style="font-size:10px;">6 WAYPOINTS</span>
+            </div>
+            <table class="dense-table">
+              <thead>
+                <tr>
+                  <th>STEP / TIME</th>
+                  <th>LAT / LNG</th>
+                  <th style="text-align:right;">VMAX (MSLP)</th>
+                </tr>
+              </thead>
+              <tbody id="forecastTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pattern Recognition -->
+          <div class="ruled-box">
+            <div class="ruled-box-header">
+              <span class="ruled-box-title">PATTERN CLASSIFICATION</span>
+              <span class="mono" style="font-size:10px;">CNN-v2.4</span>
+            </div>
+            <table class="dense-table">
+              <thead>
+                <tr>
+                  <th>PATTERN CLASS</th>
+                  <th style="text-align:right;">PROBABILITY</th>
+                </tr>
+              </thead>
+              <tbody id="patternTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Explainability (XAI) -->
+          <div class="ruled-box">
+            <div class="ruled-box-header">
+              <span class="ruled-box-title">FEATURE CONTRIBUTION (XAI)</span>
+              <span class="mono" style="font-size:10px;">SHAP VECTOR</span>
+            </div>
+            <div id="xaiFeatureList">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Coastal Stations At Risk -->
+          <div class="ruled-box">
+            <div class="ruled-box-header">
+              <span class="ruled-box-title">COASTAL VULNERABILITY</span>
+              <span class="mono" style="font-size:10px;">IMD STATIONS</span>
+            </div>
+            <table class="dense-table">
+              <thead>
+                <tr>
+                  <th>STATION</th>
+                  <th>DIST</th>
+                  <th style="text-align:right;">SURGE (WARN)</th>
+                </tr>
+              </thead>
+              <tbody id="stationsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+        </aside>
+
+      </div>
+
+      <!-- BOTTOM TIMELINE SCRUBBER -->
+      <div class="timeline-scrubber-bar">
+        <div class="scrubber-controls">
+          <button class="scrubber-btn" id="btnScrubPrev">PREV</button>
+          <button class="scrubber-btn" id="btnScrubPlay">PLAY</button>
+          <button class="scrubber-btn" id="btnScrubNext">NEXT</button>
+        </div>
+
+        <div class="scrubber-range-wrap">
+          <div class="scrubber-labels">
+            <span>T-36h (LPA)</span>
+            <span>T-24h (Depression)</span>
+            <span>T-12h (CS)</span>
+            <span style="font-weight:700; color:var(--accent);">T0 (LIVE VSCS)</span>
+            <span>T+24h (Peak)</span>
+            <span>T+48h (Landfall)</span>
+          </div>
+          <input type="range" class="scrubber-input" id="timelineRangeInput" min="0" max="5" value="3" step="1">
+        </div>
+
+        <div class="active-frame-readout" id="activeFrameReadout">
+          2026-09-29 18:00 UTC • Very Severe Cyclonic Storm
+        </div>
+      </div>
+
+      <!-- BOTTOM INFERENCE LOG STRIP -->
+      <div class="terminal-log-container" id="terminalLogsContainer">
+        <!-- Dynamically populated -->
+      </div>
+
+    </div>
+
+    <!-- TAB 2: SATELLITE AI STUDIO -->
+    <div class="workstation-view" id="view-vision-studio">
+      <div class="ruled-box">
+        <div class="ruled-box-header">
+          <span class="ruled-box-title">MULTI-SPECTRAL SATELLITE RECEPTOR COMPARISON</span>
+          <span class="mono">INSAT-3DS • 1KM GSD</span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:12px;">
+          <div>
+            <div style="font-family:var(--font-mono); font-size:11px; font-weight:600; margin-bottom:6px;">
+              CHANNEL: IR1 (10.8µm) THERMAL INFRARED
+            </div>
+            <img src="assets/cyclone_ir.jpg" style="width:100%; border:1px solid var(--border-hairline);" alt="IR Channel" />
+            <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); margin-top:4px;">
+              Calibrated Temperature Scale: 188.2K (-84.9°C) to 298.6K (+25.4°C)
+            </div>
+          </div>
+          <div>
+            <div style="font-family:var(--font-mono); font-size:11px; font-weight:600; margin-bottom:6px;">
+              CHANNEL: VIS (0.65µm) HIGH-RES OPTICAL
+            </div>
+            <img src="assets/cyclone_vis.jpg" style="width:100%; border:1px solid var(--border-hairline);" alt="VIS Channel" />
+            <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); margin-top:4px;">
+              Albedo Normalization: Optical Reflectance (0.92) • Clear-sky Eye Contrast: High
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: CONVLSTM INSPECTOR -->
+    <div class="workstation-view" id="view-convlstm">
+      <div class="ruled-box">
+        <div class="ruled-box-header">
+          <span class="ruled-box-title">ConvLSTM SPATIO-TEMPORAL ARCHITECTURE PIPELINE</span>
+          <span class="mono">INPUT: [B, 12, 4, 512, 512] ➔ OUTPUT: [B, 6, 4]</span>
+        </div>
+        <div style="padding:16px;">
+          <table class="dense-table" style="margin-bottom:12px;">
+            <thead>
+              <tr>
+                <th>LAYER / BLOCK</th>
+                <th>OPERATIONS</th>
+                <th>TENSOR DIMENSIONS</th>
+                <th>PARAMETERS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono"><b>01. Input Sequence</b></td>
+                <td>12 Historical Frames (T-12h to T0) Multi-Spectral</td>
+                <td class="mono">[B, 12, 4, 512, 512]</td>
+                <td class="mono">Raw Data</td>
+              </tr>
+              <tr>
+                <td class="mono"><b>02. Feature Extractor</b></td>
+                <td>ResNet-50 Convolutional Spatial Backbone</td>
+                <td class="mono">[B, 12, 128, 64, 64]</td>
+                <td class="mono">23.5M</td>
+              </tr>
+              <tr>
+                <td class="mono"><b>03. Temporal Encoder</b></td>
+                <td>Bi-Directional GRU Spatial-Temporal Block</td>
+                <td class="mono">[B, 256, 32, 32]</td>
+                <td class="mono">14.2M</td>
+              </tr>
+              <tr class="selected-row">
+                <td class="mono"><b>04. ConvLSTM Recurrent</b></td>
+                <td>4-Layer Convolutional LSTM Cell (Kernel 3×3)</td>
+                <td class="mono">[B, 512, 32, 32]</td>
+                <td class="mono">48.2M</td>
+              </tr>
+              <tr>
+                <td class="mono"><b>05. Dual Attention</b></td>
+                <td>Spatial & Atmospheric Steering Vector Attention</td>
+                <td class="mono">[B, 512, 32, 32]</td>
+                <td class="mono">8.4M</td>
+              </tr>
+              <tr>
+                <td class="mono"><b>06. Dense Trajectory Head</b></td>
+                <td>Multi-Head MLP Output (Lat, Lng, Vmax, MSLP)</td>
+                <td class="mono">[B, 6, 4]</td>
+                <td class="mono">2.1M</td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); line-height:1.5;">
+            ConvLSTM replaces internal linear matrix multiplications with convolution filters at input, forget, and output gates. This preserves the 2D spatial vortex morphology while propagating temporal kinematics across 12-hour multi-spectral time steps.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: SENSOR FUSION -->
+    <div class="workstation-view" id="view-fusion">
+      <div class="ruled-box">
+        <div class="ruled-box-header">
+          <span class="ruled-box-title">MULTI-SOURCE SATELLITE & NUMERICAL RECEPTORS</span>
+          <span class="mono">SYNCHRONIZATION MATRIX</span>
+        </div>
+        <div style="padding:12px;">
+          <table class="dense-table">
+            <thead>
+              <tr>
+                <th>SENSOR / PLATFORM</th>
+                <th>AGENCY</th>
+                <th>CHANNELS / DATA TYPE</th>
+                <th>RESOLUTION</th>
+                <th>STATUS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono"><b>INSAT-3DS Imager</b></td>
+                <td>ISRO / IMD</td>
+                <td>IR1 (10.8µm), VIS (0.65µm), WV (6.7µm)</td>
+                <td class="mono">1.0 km</td>
+                <td class="mono" style="color:var(--status-green);">NOMINAL (100%)</td>
+              </tr>
+              <tr>
+                <td class="mono"><b>INSAT-3DR Sounder</b></td>
+                <td>ISRO / IMD</td>
+                <td>18-channel Atmospheric Temperature & Moisture</td>
+                <td class="mono">10.0 km</td>
+                <td class="mono" style="color:var(--status-amber);">DELAYED (+47m)</td>
+              </tr>
+              <tr>
+                <td class="mono"><b>Himawari-9 AHI</b></td>
+                <td>JMA Tokyo</td>
+                <td>16-Band Optical / Thermal Imager</td>
+                <td class="mono">0.5 - 2.0 km</td>
+                <td class="mono" style="color:var(--status-green);">NOMINAL (99.1%)</td>
+              </tr>
+              <tr>
+                <td class="mono"><b>DWR Radar Paradip</b></td>
+                <td>IMD Odisha</td>
+                <td>S-Band Radar Reflectivity & Radial Velocity</td>
+                <td class="mono">250 m</td>
+                <td class="mono" style="color:var(--status-green);">NOMINAL (99.9%)</td>
+              </tr>
+              <tr>
+                <td class="mono"><b>IBTrACS Reanalysis</b></td>
+                <td>NOAA NCEI</td>
+                <td>1880-2025 NIO Ground Truth Tracks</td>
+                <td class="mono">3-hourly</td>
+                <td class="mono" style="color:var(--status-green);">SYNCHRONIZED</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 5: DISASTER RISK & DISPATCH -->
+    <div class="workstation-view" id="view-risk">
+      <div class="ruled-box">
+        <div class="ruled-box-header">
+          <span class="ruled-box-title">DISASTER INTELLIGENCE & EARLY WARNING DISPATCH</span>
+          <span class="mono" id="riskScoreBadge" style="color:var(--accent); font-weight:700;">RISK SCORE: 78 / 100</span>
+        </div>
+        <div style="padding:16px;">
+          <div style="font-family:var(--font-mono); font-size:11px; font-weight:600; margin-bottom:8px;">
+            PRIMARY RISK FACTORS (AI RISK ENGINE EVALUATION):
+          </div>
+          <ul id="riskFactorList" style="font-family:var(--font-mono); font-size:11px; padding-left:20px; color:var(--text-primary); line-height:1.6;">
+            <!-- Populated dynamically -->
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 6: RAW GEOJSON / API DUMP -->
+    <div class="workstation-view" id="view-raw-json">
+      <div class="ruled-box">
+        <div class="ruled-box-header">
+          <span class="ruled-box-title">RAW METEOROLOGICAL TELEMETRY PAYLOAD (JSON)</span>
+          <button class="btn-action-accent" id="btnCopyJson" style="padding:2px 8px; font-size:10px;">COPY JSON PAYLOAD</button>
+        </div>
+        <pre class="code-dump-box" id="rawJsonViewer"></pre>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- OPERATIONAL FOOTER -->
+  <footer class="operational-footer">
+    <div>
+      <b>VYUHA CYCLONE WATCH</b> • PROBLEM STATEMENT PS 26070 • SMART INDIA HACKATHON 2026
+    </div>
+    <div>
+      SYNTHETIC OPERATIONAL RESEARCH DEMONSTRATION • NOT AN OFFICIAL STATUTORY WEATHER WARNING
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/data.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
